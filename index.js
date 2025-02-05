@@ -5,40 +5,48 @@ const { Buffer } = require('node:buffer');
 
 noise.seed(Math.random());
 
-const width = 1000;
-const height = 1000;
-const scale = 100;
+const width = 250;
+const height = 250;
 
 // lacunarity = frequency of octives
-
+// persistence = how amplitude decreases with octive
 const toNoiseMap = (height, width, scale, octives = 3, lacunarity = 2, persistence = 0.5) => {
   const baseMap = Array.from({ length: width }, () => Array.from({ length: height }));
 
   return baseMap.map((row, x) => {
     return row.map((cell, y) => {
+      return Array.from({ length: octives }).reduce((total, _curr, octive) => {
+        const noiseForThisOctive = noise.simplex2(x / scale * lacunarity**octive, y / scale * lacunarity**octive);
 
-      // for (const octive = 0; octive < octives; octive++) {
-      //   const sampleX = x / scale * (lacunarity ^ )
-
-      // }
-
-      const base = noise.simplex2(x / scale, y / scale);
-      const aBit = noise.simplex2(x / scale * lacunarity**1, y / scale * lacunarity**1);
-      const aBitLess = noise.simplex2(x / scale * lacunarity**2, y / scale * lacunarity**2);
-
-      return base + (aBit * persistence**1) + (aBitLess * persistence**2);
-      // return (base + 1) / 2;
-      // return base;
+        const withPersistence = noiseForThisOctive * persistence**octive;
+        return total + withPersistence;
+      }, 0)
     })
   });
 }
 
-const maxMatrix = (matrix) => matrix.flat(2).reduce((acc, curr) => curr > acc ? curr : acc, Number.MIN_VALUE);
+// subtract a basin shape from the base map to add water around the edges
+const toFalloffMap = (height, width, depthFactor = 0.1, maxMagnitudeFactor = 0.5) => {
+  const baseMap = Array.from({ length: width }, () => Array.from({ length: height }));
 
-const minMatrix = (matrix) => matrix.flat(2).reduce((acc, curr) => curr < acc ? curr : acc, Number.MAX_VALUE)
+  return baseMap.map((row, x) => row.map((cell, y) => {
+    const distanceFromEdgeX = Math.min(x, width - x);
+    const distanceFromEdgeY = Math.min(y, height - y);
 
-const terrain = toNoiseMap(height, width, scale, 3, 2.1, 0.7);
+    return Math.min(
+      (distanceFromEdgeX / (width / 2)) * maxMagnitudeFactor,
+      (distanceFromEdgeY / (height / 2)) * maxMagnitudeFactor,
+    )
+  }))
+}
 
+const mapMatrix = (arrArr, mapper) => {
+  return arrArr.map((row, x) => row.map((cell, y) => {
+    return mapper(cell, x, y);
+  }));
+};
+
+// this is misnamed, it actually seems to try to normalize a value in a range to 0-1
 const scaledToRange = (min, max) => (v) => {
   const range = max - min;
 
@@ -47,9 +55,36 @@ const scaledToRange = (min, max) => (v) => {
   return Math.abs(x) / range;
 }
 
+const maxMatrix = (matrix) => matrix.flat(2).reduce((acc, curr) => curr > acc ? curr : acc, Number.MIN_VALUE);
+const minMatrix = (matrix) => matrix.flat(2).reduce((acc, curr) => curr < acc ? curr : acc, Number.MAX_VALUE);
 
-const maxValue = maxMatrix(terrain);
-const minValue = minMatrix(terrain);
+const noiseMap = toNoiseMap(height, width, 100, 5, 2, 0.4);
+
+const maxValue = maxMatrix(noiseMap);
+const minValue = minMatrix(noiseMap);
+
+const scaledNoiseMap = mapMatrix(
+  noiseMap,
+  (cell) => scaledToRange(minValue, maxValue)(cell)
+);
+
+const fallOffMap = //mapMatrix(
+  toFalloffMap(height, width);
+  // (cell) => scaledToRange(minValue, maxValue)(cell)
+//);
+
+const terrain1 = mapMatrix(
+  scaledNoiseMap,
+  (cell, x, y) => cell + fallOffMap[x][y]
+)
+
+const newMax = maxMatrix(terrain1);
+const newMin = minMatrix(terrain1);
+
+const terrain = mapMatrix(
+  terrain1,
+  (cell, x, y) => scaledToRange(newMin, newMax)(cell)
+)
 
 const snow = [ 255, 255, 255];
 const mountain = [ 99, 102, 106];
@@ -65,7 +100,7 @@ const toColor = (v) => {
  if (v > 180) {
   return mountain;
  }
- if (v > 150) {
+ if (v > 140) {
   return forest;
  }
  if (v > 110) {
@@ -78,9 +113,9 @@ const toColor = (v) => {
  return water;
 }
 
-const terrainArr = terrain.flatMap((row) => {
-  return row.flatMap((cell) => {
-    const v = scaledToRange(minValue, maxValue)(cell);
+const terrainArr = terrain.flatMap((row, x) => {
+  return row.flatMap((cell, y) => {
+    let v = cell;
 
     // const raw = v * 256 * 256 * 256;
     // const r = (raw & 0xFF);
