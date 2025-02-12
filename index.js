@@ -26,16 +26,19 @@ const toNoiseMap = (height, width, scale, octives = 3, lacunarity = 2, persisten
 }
 
 // subtract a basin shape from the base map to add water around the edges
-const toFalloffMap = (height, width, depthFactor = 0.1, maxMagnitudeFactor = 0.5) => {
+const toFalloffMap = (height, width, depthFactor = 0.2, maxMagnitudeFactor = 0.3) => {
   const baseMap = Array.from({ length: width }, () => Array.from({ length: height }));
 
   return baseMap.map((row, x) => row.map((cell, y) => {
     const distanceFromEdgeX = Math.min(x, width - x);
     const distanceFromEdgeY = Math.min(y, height - y);
 
+    const percentageOfTheWayToMaxX = Math.min(distanceFromEdgeX / (depthFactor * (width / 2)), 1);
+    const percentageOfTheWayToMaxY = Math.min(distanceFromEdgeY / (depthFactor * (height / 2)), 1);
+
     return Math.min(
-      (distanceFromEdgeX / (width / 2)) * maxMagnitudeFactor,
-      (distanceFromEdgeY / (height / 2)) * maxMagnitudeFactor,
+      percentageOfTheWayToMaxX * maxMagnitudeFactor,
+      percentageOfTheWayToMaxY * maxMagnitudeFactor,
     )
   }))
 }
